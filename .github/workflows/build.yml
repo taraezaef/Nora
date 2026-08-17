@@ -12,15 +12,9 @@ jobs:
       - name: Setup Node.js Environment
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: 'npm'
+          node-version: 20 # إصدار مستقر ومتوافق سحابياً
 
-      - name: Fix Bun Framework Dependency
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Clean Install App Packages
+      - name: Fix Node Packages Clean Build
         run: |
           npm install -g bun
           bun install --no-frozen-lockfile
