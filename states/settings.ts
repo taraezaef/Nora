@@ -13,15 +13,48 @@ import {
   isValidSearchTemplate,
 } from '@/lib/search'
 
-export interface Profile {
+export type SpoofedOS = 'Windows' | 'Android' | 'iOS'
+export type ProxyType = 'http' | 'socks4' | 'socks5'
+
+export interface AntiDetectProfileConfig {
+  customUserAgent: string
+  spoofedOS: SpoofedOS
+  isProxyEnabled: boolean
+  proxyHost: string
+  proxyPort: number
+  proxyType: ProxyType
+  proxyUsername: string
+  proxyPassword: string
+  syncTimezone: boolean
+}
+
+export interface Profile extends AntiDetectProfileConfig {
   id: string
   name: string
   color: string
   isDefault?: boolean
 }
 
+export const DEFAULT_ANTI_DETECT: AntiDetectProfileConfig = {
+  customUserAgent: '',
+  spoofedOS: 'Windows',
+  isProxyEnabled: false,
+  proxyHost: '',
+  proxyPort: 8080,
+  proxyType: 'http',
+  proxyUsername: '',
+  proxyPassword: '',
+  syncTimezone: false,
+}
+
 const DEFAULT_PROFILE_ID = 'default'
-const DEFAULT_PROFILE: Profile = { id: DEFAULT_PROFILE_ID, name: 'Default', color: '#6366f1', isDefault: true }
+const DEFAULT_PROFILE: Profile = {
+  id: DEFAULT_PROFILE_ID,
+  name: 'Default',
+  color: '#6366f1',
+  isDefault: true,
+  ...DEFAULT_ANTI_DETECT,
+}
 
 const ensureProfiles = (profiles?: (Profile | null | undefined)[]) => {
   const sanitized = (profiles || []).filter((p): p is Profile => p != null)
@@ -94,10 +127,23 @@ interface Store extends Settings {
   updateCustomSearchProvider: (id: string, name: string, templateUrl: string) => void
   deleteCustomSearchProvider: (id: string) => void
   addProfile: (name: string, color: string) => void
-  updateProfile: (id: string, name: string, color: string) => void
+  updateProfile: (id: string, name: string, color: string, options?: Partial<Profile>) => void
   deleteProfile: (id: string) => void
   setDefaultZoom: (zoom: number) => void
   setSiteZoom: (site: string, zoom: number | null) => void
+}
+
+const normalizeSpoofedOS = (value: unknown): SpoofedOS => {
+  return value === 'Android' || value === 'iOS' || value === 'Windows' ? value : DEFAULT_ANTI_DETECT.spoofedOS
+}
+
+const normalizeProxyType = (value: unknown): ProxyType => {
+  return value === 'socks4' || value === 'socks5' || value === 'http' ? value : DEFAULT_ANTI_DETECT.proxyType
+}
+
+const normalizeProfilePort = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ANTI_DETECT.proxyPort
 }
 
 const sanitizeProfiles = (profiles?: (Partial<Profile> | null | undefined)[]) =>
@@ -108,6 +154,15 @@ const sanitizeProfiles = (profiles?: (Partial<Profile> | null | undefined)[]) =>
         id: profile!.id!,
         name: profile!.name!,
         color: typeof profile!.color === 'string' ? profile!.color! : DEFAULT_PROFILE.color,
+        customUserAgent: typeof profile!.customUserAgent === 'string' ? profile!.customUserAgent : DEFAULT_ANTI_DETECT.customUserAgent,
+        spoofedOS: normalizeSpoofedOS(profile!.spoofedOS),
+        isProxyEnabled: typeof profile!.isProxyEnabled === 'boolean' ? profile!.isProxyEnabled : DEFAULT_ANTI_DETECT.isProxyEnabled,
+        proxyHost: typeof profile!.proxyHost === 'string' ? profile!.proxyHost : DEFAULT_ANTI_DETECT.proxyHost,
+        proxyPort: normalizeProfilePort(profile!.proxyPort),
+        proxyType: normalizeProxyType(profile!.proxyType),
+        proxyUsername: typeof profile!.proxyUsername === 'string' ? profile!.proxyUsername : DEFAULT_ANTI_DETECT.proxyUsername,
+        proxyPassword: typeof profile!.proxyPassword === 'string' ? profile!.proxyPassword : DEFAULT_ANTI_DETECT.proxyPassword,
+        syncTimezone: typeof profile!.syncTimezone === 'boolean' ? profile!.syncTimezone : DEFAULT_ANTI_DETECT.syncTimezone,
         ...(profile!.isDefault ? { isDefault: true } : {}),
       })),
   )
@@ -192,7 +247,7 @@ export const normalizeSettings = <T extends Partial<Settings> | undefined>(data:
   }
 
   if ('profiles' in data) {
-    data.profiles = ensureProfiles(data.profiles)
+    data.profiles = sanitizeProfiles(data.profiles)
   }
   data.customSearchProviders = normalizeCustomSearchProviders(data.customSearchProviders)
   data.enabledSearchProviderIds = normalizeEnabledSearchProviderIds(
@@ -414,9 +469,9 @@ export const settings$: Observable<Store> = observable<Store>({
     if (!trimmedName) {
       return
     }
-    settings$.profiles.push({ id: genId(), name: trimmedName, color })
+    settings$.profiles.push({ ...DEFAULT_ANTI_DETECT, id: genId(), name: trimmedName, color })
   },
-  updateProfile: (id, name, color) => {
+  updateProfile: (id, name, color, options = {}) => {
     const profiles = settings$.profiles.get()
     const index = profiles.findIndex((p) => p?.id === id)
     const trimmedName = name.trim()
@@ -424,7 +479,14 @@ export const settings$: Observable<Store> = observable<Store>({
       return
     }
     if (index !== -1) {
-      settings$.profiles[index].assign({ name: trimmedName, color })
+      const currentProfile = profiles[index] ?? DEFAULT_PROFILE
+      settings$.profiles[index].assign({
+        ...DEFAULT_ANTI_DETECT,
+        ...currentProfile,
+        ...options,
+        name: trimmedName,
+        color,
+      })
     }
   },
   deleteProfile: (id) => {

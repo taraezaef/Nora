@@ -1,0 +1,23 @@
+import { registerWebModule, NativeModule } from 'expo';
+import { mainClient } from '@/desktop/src/renderer/ipc/main';
+class NoraViewModule extends NativeModule {
+    async translateText() {
+        throw new Error('Translation is available on mobile only');
+    }
+    async getTranslationSupportedLanguages() {
+        return [];
+    }
+    async clearProfileData(profile) {
+        if (!window.electron?.ipcRenderer) {
+            return;
+        }
+        await mainClient.clearProfileData(profile);
+    }
+    async clearHostData(profile, host) {
+        if (!window.electron?.ipcRenderer) {
+            return;
+        }
+        await mainClient.clearHostData(profile, host);
+    }
+}
+export default registerWebModule(NoraViewModule, 'NoraViewModule');

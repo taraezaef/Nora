@@ -48,6 +48,7 @@ import { DECK_VIEW_ID, savedViews$ } from '@/states/saved-views'
 import { tabGroups$ } from '@/states/tab-groups'
 import { blocklistMatcherRevision$, getCosmeticCssForHost, loadCosmeticFilters } from '@/lib/blocklist'
 import { blocklist$ } from '@/states/blocklist'
+import { buildTimezoneSpoofScript, getEffectiveProxy, getUserAgentForProfile } from '@/lib/profile-settings'
 
 const LOAD_URL_MAX_RETRIES = 5
 const LOAD_URL_RETRY_DELAY = 100
@@ -269,6 +270,11 @@ export const NoraTab: React.FC<{
   const profileColor = getProfileColor(tab.profile)
   const viewKey = getProfileViewKey(tab)
   const viewInstanceKey = `${viewKey}:${tab.url ? 'page' : 'blank'}`
+  const tabProfileId = tab.profile || 'default'
+  const resolvedUserAgent = getUserAgentForProfile(tabProfileId)
+  const proxyConfig = getEffectiveProxy(tabProfileId)
+  const timezoneGuardScript = buildTimezoneSpoofScript(tabProfileId)
+  const documentStartGuard = [protectWebRtcIp ? webRtcGuardScript : '', timezoneGuardScript].filter(Boolean).join('\n')
   // Deferred cold-start restore: no webview is mounted while dormant, so the tab costs
   // nothing until the active tab has loaded (or the user switches to it).
   const isDormant = Boolean(tab.isDormant) && !tab.isPaused
@@ -871,8 +877,9 @@ export const NoraTab: React.FC<{
           <NoraView
             className={clsx('flex-1', !tab.url && 'hidden')}
             ref={noraViewRef}
-            partition={`persist:${tab.profile || 'default'}`}
-            useragent={getUserAgent(window.electron.process.platform, true)}
+            partition={`persist:${tabProfileId}`}
+            useragent={resolvedUserAgent}
+            proxy={proxyConfig}
             inspectable={inspectable}
             allowpopups="true"
             key={viewInstanceKey}
@@ -958,10 +965,10 @@ export const NoraTab: React.FC<{
             key={viewInstanceKey}
             ref={onNativeRef}
             className={clsx('flex-1', !tab.url && 'hidden')}
-            profile={tab.profile || 'default'}
+            profile={tabProfileId}
             scriptOnStart={contentJs}
-            scriptOnDocumentStart={protectWebRtcIp ? webRtcGuardScript : ''}
-            useragent={getUserAgent(isIos ? 'ios' : 'android', tab.desktopMode)}
+            scriptOnDocumentStart={documentStartGuard}
+            useragent={resolvedUserAgent}
             onLoad={onLoad}
             onMessage={onMessage}
             inspectable={inspectable}
@@ -1008,10 +1015,10 @@ export const NoraTab: React.FC<{
             top: 0,
             bottom: 0,
           }}
-          profile={tab.profile || 'default'}
+          profile={tabProfileId}
           scriptOnStart={contentJs}
-          scriptOnDocumentStart={protectWebRtcIp ? webRtcGuardScript : ''}
-          useragent={getUserAgent(isIos ? 'ios' : 'android', tab.desktopMode)}
+          scriptOnDocumentStart={documentStartGuard}
+          useragent={resolvedUserAgent}
           onLoad={onLoad}
           onMessage={onMessage}
           inspectable={inspectable}

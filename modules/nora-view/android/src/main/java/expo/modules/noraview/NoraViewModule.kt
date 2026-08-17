@@ -26,6 +26,85 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.FileWriter
 
+private data class ImportedCookie(
+  val domain: String,
+  val path: String,
+  val secure: Boolean,
+  val httpOnly: Boolean,
+  val expires: Long,
+  val name: String,
+  val value: String,
+)
+
+private fun parseImportedCookies(payload: String): List<ImportedCookie> {
+  val trimmed = payload.trim()
+  if (trimmed.isEmpty()) {
+    return emptyList()
+  }
+
+  return try {
+    when {
+      trimmed.startsWith("[") -> {
+        val array = org.json.JSONArray(trimmed)
+        buildList {
+          for (idx in 0 until array.length()) {
+            val item = array.getJSONObject(idx)
+            val cookie = ImportedCookie(
+              domain = item.optString("domain", "").trim(),
+              path = item.optString("path", "/").trim().ifEmpty { "/" },
+              secure = item.optBoolean("secure", false),
+              httpOnly = item.optBoolean("httpOnly", false),
+              expires = item.optLong("expires", 0L),
+              name = item.optString("name", "").trim(),
+              value = item.optString("value", ""),
+            )
+            if (cookie.domain.isNotEmpty() && cookie.name.isNotEmpty()) {
+              add(cookie)
+            }
+          }
+        }
+      }
+      trimmed.startsWith("{") -> {
+        val item = org.json.JSONObject(trimmed)
+        val cookie = ImportedCookie(
+          domain = item.optString("domain", "").trim(),
+          path = item.optString("path", "/").trim().ifEmpty { "/" },
+          secure = item.optBoolean("secure", false),
+          httpOnly = item.optBoolean("httpOnly", false),
+          expires = item.optLong("expires", 0L),
+          name = item.optString("name", "").trim(),
+          value = item.optString("value", ""),
+        )
+        if (cookie.domain.isNotEmpty() && cookie.name.isNotEmpty()) listOf(cookie) else emptyList()
+      }
+      else -> {
+        trimmed.lineSequence()
+          .filter { it.isNotBlank() && !it.startsWith("#") }
+          .mapNotNull { line ->
+            val parts = line.split("\t")
+            if (parts.size < 7) return@mapNotNull null
+            val domain = parts[0].trim()
+            val name = parts[5].trim()
+            val value = parts.drop(6).joinToString("\t").trim()
+            if (domain.isEmpty() || name.isEmpty()) return@mapNotNull null
+            ImportedCookie(
+              domain = domain.removePrefix("#HttpOnly_").trim(),
+              path = parts[2].trim().ifEmpty { "/" },
+              secure = parts[3].trim().equals("TRUE", ignoreCase = true),
+              httpOnly = domain.startsWith("#HttpOnly_"),
+              expires = parts[4].trim().toLongOrNull() ?: 0L,
+              name = name,
+              value = value,
+            )
+          }
+          .toList()
+      }
+    }
+  } catch (e: Exception) {
+    emptyList()
+  }
+}
+
 class NoraViewModule : Module() {
   fun log(msg: String) {
     sendEvent("log", mapOf("msg" to msg))
@@ -193,6 +272,64 @@ class NoraViewModule : Module() {
       }
     }
 
+    AsyncFunction("importCookies") { profile: String, payload: String ->
+      try {
+        val manager = if (profile != "default" && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+          ProfileStore.getInstance().getProfile(profile)?.cookieManager ?: CookieManager.getInstance()
+        } else {
+          CookieManager.getInstance()
+        }
+
+        val cookies = parseImportedCookies(payload)
+        if (cookies.isEmpty()) {
+          return@AsyncFunction 0
+        }
+
+        var imported = 0
+        for (cookie in cookies) {
+          if (cookie.name.isEmpty() || cookie.domain.isEmpty()) {
+            continue
+          }
+
+          val effectiveDomain = cookie.domain.trim().removePrefix(".")
+          val secureUrl = "https://$effectiveDomain"
+          val cookieValue = buildString {
+            append("${cookie.name}=${cookie.value}")
+            append("; path=${cookie.path.ifEmpty { "/" }}")
+            if (effectiveDomain.isNotEmpty()) {
+              append("; domain=${if (cookie.domain.startsWith(".")) cookie.domain else ".$effectiveDomain"}")
+            }
+            if (cookie.secure) {
+              append("; Secure")
+            }
+            if (cookie.httpOnly) {
+              append("; HttpOnly")
+            }
+            val maxAgeSeconds = if (cookie.expires > 0L) {
+              (cookie.expires - (System.currentTimeMillis() / 1000L)).coerceAtLeast(0L)
+            } else {
+              0L
+            }
+            if (maxAgeSeconds > 0L) {
+              append("; Max-Age=$maxAgeSeconds")
+            }
+          }
+
+          manager.setCookie(secureUrl, cookieValue)
+          if (!cookie.secure) {
+            manager.setCookie("http://$effectiveDomain", cookieValue)
+          }
+          imported += 1
+        }
+
+        manager.flush()
+        imported
+      } catch (e: Exception) {
+        log("importCookies failed: ${e.message}")
+        0
+      }
+    }
+
     AsyncFunction("getCookies") Coroutine { url: String, profile: String? ->
       withContext(Dispatchers.Main) {
         try {
@@ -248,6 +385,14 @@ class NoraViewModule : Module() {
 
       Prop("profile") { view: NoraView, profile: String ->
         view.setProfile(profile)
+      }
+
+      Prop("proxy") { view: NoraView, proxy: JavaScriptObject ->
+        val enabled = proxy.getProperty("enabled")?.getBoolean() ?: false
+        val host = proxy.getProperty("host")?.getString()
+        val port = proxy.getProperty("port")?.getDouble()?.toInt() ?: 0
+        val type = proxy.getProperty("type")?.getString()
+        view.applyProxyOverride(enabled, host, port, type)
       }
 
       Prop("textZoom") { view: NoraView, zoom: Int ->

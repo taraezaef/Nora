@@ -52,6 +52,8 @@ import androidx.webkit.WebViewFeature
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
@@ -353,6 +355,7 @@ class NoraView(context: Context, appContext: AppContext) : ExpoView(context, app
   private var contextMenuLinkUrl: String? = null
   private var contextMenuImageUrl: String? = null
   internal var userAgent: String? = null
+  private var proxyConfig: ProxyConfig? = null
   private var profileSet = false
   private var profileName = "default"
 
@@ -1011,6 +1014,42 @@ class NoraView(context: Context, appContext: AppContext) : ExpoView(context, app
       log("setProfile failed: ${e.message}")
     }
     profileSet = true
+  }
+
+  fun applyProxyOverride(enabled: Boolean, host: String?, port: Int, type: String?) {
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+      return
+    }
+
+    val resolverType = (type ?: "http").lowercase()
+    val resolvedHost = host?.trim().orEmpty()
+    val proxyRule = if (enabled && resolvedHost.isNotEmpty() && port > 0) {
+      val scheme = if (resolverType == "socks" || resolverType == "socks4" || resolverType == "socks5") "socks" else "http"
+      "$scheme://$resolvedHost:$port"
+    } else {
+      null
+    }
+
+    val executor = java.util.concurrent.Executor { command -> command.run() }
+    if (proxyRule == null) {
+      try {
+        ProxyController.getInstance().clearProxyOverride(executor, Runnable { log("proxy override cleared") })
+      } catch (e: Exception) {
+        log("clearProxyOverride failed: ${e.message}")
+      }
+      proxyConfig = null
+      return
+    }
+
+    try {
+      val nextConfig = ProxyConfig.Builder().addProxyRule(proxyRule).build()
+      proxyConfig = nextConfig
+      ProxyController.getInstance().setProxyOverride(nextConfig, executor, Runnable {
+        log("proxy override applied: $proxyRule")
+      })
+    } catch (e: Exception) {
+      log("setProxyOverride failed: ${e.message}")
+    }
   }
 
   fun setTextZoom(zoom: Int) {

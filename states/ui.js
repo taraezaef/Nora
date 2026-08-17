@@ -1,0 +1,37 @@
+import { observable } from '@legendapp/state';
+export const ui$ = observable({
+    urlModalMode: 'open',
+    urlModalTargetTabId: null,
+    url: '',
+    title: '',
+    // header
+    headerHeight: 0,
+    headerShown: true,
+    // modals
+    bookmarkModalOpen: false,
+    cookieModalOpen: false,
+    downloadVideoModalUrl: '',
+    navModalOpen: false,
+    profileLinkUrl: '',
+    autoProfilesModalOpen: false,
+    profileModalOpen: false,
+    editingProfileId: null,
+    renameGroupModalTargetGroupId: null,
+    renameViewModalTargetViewId: null,
+    settingsModalOpen: false,
+    tabModalOpen: false,
+    toolsModalOpen: false,
+    zoomModalOpen: false,
+    urlModalOpen: false,
+    userStyleModalOpen: false,
+    editingUserStyleId: null,
+    userScriptModalOpen: false,
+    editingUserScriptId: null,
+    previewBuiltinId: null,
+    lastSelectedProfileId: 'default',
+    // webview
+    activeCanGoBack: false,
+    webview: undefined,
+    hoverLinkUrl: '',
+    translation: null,
+});

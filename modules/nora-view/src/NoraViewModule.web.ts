@@ -24,6 +24,14 @@ class NoraViewModule extends NativeModule {
 
     await mainClient.clearHostData(profile, host)
   }
+
+  async importCookies(profile: string, payload: string | Record<string, unknown> | Record<string, unknown>[]) {
+    if (!window.electron?.ipcRenderer) {
+      return 0
+    }
+
+    return 0
+  }
 }
 
 export default registerWebModule(NoraViewModule, 'NoraViewModule')

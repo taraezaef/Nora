@@ -11,6 +11,13 @@ export type OnMessageEventPayload = {
   payload: string
 }
 
+export type NoraViewProxyConfig = {
+  enabled?: boolean
+  host?: string
+  port?: number
+  type?: 'http' | 'socks' | 'socks4' | 'socks5'
+}
+
 export type NoraViewProps = {
   className?: string
   style?: StyleProp<any>
@@ -18,6 +25,7 @@ export type NoraViewProps = {
   useragent: string
   partition?: string
   profile?: string
+  proxy?: NoraViewProxyConfig
   inspectable?: boolean
   allowpopups?: string
   src?: string
