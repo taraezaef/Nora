@@ -9,16 +9,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js Environment
+      - name: Setup Node.js 24 Environment
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # إصدار مستقر ومتوافق سحابياً
+          node-version: 24 # التوافق الكامل والوحيد المقبول في خوادم 2026
 
-      - name: Fix Node Packages Clean Build
+      - name: Install Bun Toolchain
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Clean App Dependency Installation
         run: |
           npm install -g bun
-          bun install --no-frozen-lockfile
+          bun install --no-frozen-lockfile --ignore-scripts
 
-      - name: Build and Export Android App
+      - name: Compile and Export Production Android App
         run: |
           npx expo export --platform android
